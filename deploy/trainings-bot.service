@@ -1,0 +1,20 @@
+[Unit]
+Description=Telegram training log bot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=trainingbot
+Group=trainingbot
+WorkingDirectory=/opt/trainings-bot
+ExecStart=/opt/trainings-bot/.venv/bin/python -m trainings_bot
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=10
+UMask=0077
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

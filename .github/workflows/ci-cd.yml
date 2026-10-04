@@ -1,0 +1,63 @@
+name: CI and deploy
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        python: ['3.12', '3.14']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-calc fonts-crosextra-carlito fonts-liberation
+      - run: python -m pip install -r requirements-ci.txt
+      - run: python tools/check_public.py
+      - run: python tools/create_ci_assets.py
+      - run: python -m unittest discover -s tests -q
+        env:
+          RUN_PDF_TESTS: '1'
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT: ${{ vars.GCP_PROJECT_ID }}
+      ZONE: ${{ vars.GCP_ZONE }}
+      VM: ${{ vars.GCP_VM }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: git archive --format=tar.gz -o /tmp/release.tar.gz HEAD trainings_bot requirements.txt deploy
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+      - name: Upload tested release through IAP
+        run: |
+          gcloud compute scp /tmp/release.tar.gz "$VM:release-$GITHUB_SHA.tar.gz" --project="$PROJECT" --zone="$ZONE" --tunnel-through-iap --quiet
+      - name: Install and activate release
+        run: |
+          gcloud compute ssh "$VM" --project="$PROJECT" --zone="$ZONE" --tunnel-through-iap --quiet --command="sudo.ws /usr/local/sbin/deploy-trainings-bot '$GITHUB_SHA' \"\$HOME/release-$GITHUB_SHA.tar.gz\""
