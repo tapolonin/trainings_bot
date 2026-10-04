@@ -153,3 +153,15 @@ class NavigationTests(unittest.TestCase):
         self.app.handle(1,'Cancel')
         self.assertEqual(len(self.store.entries(1,'2026-09')),1)
         self.assertEqual(self.store.conversation(1)['selected_day'],'2026-09-01')
+
+    def test_help_version_and_whats_new_navigation(self):
+        from trainings_bot.version import VERSION, RELEASE_NOTES
+        help_reply = self.app.handle(1, 'Help')
+        self.assertIn(f'Version {VERSION}', help_reply.text)
+        self.assertIn("What's new", help_reply.buttons)
+        notes = self.app.handle(1, "What's new")
+        self.assertIn(RELEASE_NOTES.strip(), notes.text)
+        self.assertEqual(notes.buttons, ['Back', 'Main menu'])
+        self.assertIn("What's new", self.app.handle(1, 'Back').buttons)
+        self.app.handle(1, "What's new")
+        self.assertIn('Log day', self.app.handle(1, 'Main menu').buttons)

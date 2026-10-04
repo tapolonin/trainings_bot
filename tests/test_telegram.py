@@ -462,3 +462,24 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
         self.store.track_message(1,1,900)
         await self.send('Calendar')
         self.assertFalse(any(isinstance(m,DeleteMessage) and m.message_id==900 for m in self.calls))
+
+    async def test_reposted_menu_buttons_work_and_manual_log_resolves_notice(self):
+        from trainings_bot.reminders import send_due
+        from datetime import date
+        self.real_id, self.real_screens, self.real_methods = 4000, [], []
+        with patch.object(Bot, '__call__', new_callable=AsyncMock, side_effect=self.real_result):
+            await self.real_feed(text='/start')
+            for value in ['Test','Trainer','RSG','DE89370400440532013000','20','Europe/Berlin','20:00','Use suggested gyms','Next']:
+                await self.real_feed(text=value)
+            await send_due(self.store, self.bot, datetime(2026,9,28,18,tzinfo=timezone.utc))
+            notice_id = self.store.notification(1,'evening','2026-09-28')['message_id']
+            menu = self.real_screens[-1]
+            self.assertGreater(menu.message_id, notice_id)
+            await self.real_feed(screen=menu, label='Log day')
+            with patch('trainings_bot.conversation.local_today', return_value=date(2026,9,28)):
+                await self.real_feed(screen=self.real_screens[-1], label='Today')
+                await self.real_feed(screen=self.real_screens[-1], label='No training')
+                await self.real_feed(screen=self.real_screens[-1], label='Confirm no training')
+            self.assertIn('2026-09-28', self.store.day_statuses(1,'2026-09'))
+            self.assertTrue(any(isinstance(m,DeleteMessage) and m.message_id==notice_id
+                                for m in self.real_methods))

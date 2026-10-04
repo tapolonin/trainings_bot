@@ -18,7 +18,7 @@ from aiogram.types import (BotCommand, CallbackQuery, InlineKeyboardButton,
 from .conversation import Conversation
 from .storage import Store
 from .reports import report_data, make_document
-from .reminders import run_reminders
+from .reminders import run_reminders, resolve_log_reminders, user_lock
 from .admin import parse_admin_ids
 
 
@@ -35,6 +35,14 @@ def load_env(path=Path('.env')):
 
 def make_dispatcher(conversation):
     router = Router()
+    async def serialize_user(handler, event, data):
+        user = event.from_user
+        if user is None:
+            return await handler(event,data)
+        async with user_lock(conversation.store,user.id):
+            return await handler(event,data)
+    router.message.outer_middleware(serialize_user)
+    router.callback_query.outer_middleware(serialize_user)
     outgoing = ContextVar('outgoing_messages')
     actor = ContextVar('actor')
     render_lock = asyncio.Lock()
@@ -45,6 +53,7 @@ def make_dispatcher(conversation):
         uid = message.chat.id
         if isinstance(sent, Message):
             conversation.store.track_message(uid, message.chat.id, sent.message_id)
+            conversation.store.snapshot_message(uid, sent.message_id, text, kwargs.get('reply_markup'))
             outgoing.get().append(sent.message_id)
         return sent
 
@@ -59,6 +68,7 @@ def make_dispatcher(conversation):
         if delete_input:
             old.add(message.message_id)
         await remove_messages(message, old)
+        await resolve_log_reminders(conversation.store, message.bot, uid)
 
     def screen_key(uid, calendar=False):
         state = conversation.store.conversation(uid)
@@ -210,7 +220,9 @@ def make_dispatcher(conversation):
             return
         previous_state = conversation.store.conversation(query.from_user.id)
         try:
-            if (query.data or '').startswith('adm:'):
+            if query.data == 'notice_home':
+                reply = conversation.handle(query.from_user.id, 'Main menu')
+            elif (query.data or '').startswith('adm:'):
                 reply = conversation.admin_action(query.from_user.id,query.data)
             elif (query.data or '').startswith('notice:'):
                 reply = conversation.notification_action(query.from_user.id, query.data, query.message.message_id)
@@ -245,6 +257,7 @@ def make_dispatcher(conversation):
                             or previous_state.get('detail_token') != previous_state.get('calendar_token')):
                         await query.bot.edit_message_text(chat_id=query.message.chat.id, message_id=detail_id,
                                                           text=reply.text, reply_markup=markup)
+                        conversation.store.snapshot_message(query.from_user.id, detail_id, reply.text, markup)
                 else:
                     sent = await send_tracked(query.message, reply.text, reply_markup=markup)
                     detail_id = sent.message_id
@@ -259,7 +272,9 @@ def make_dispatcher(conversation):
             await query.answer()
         elif reply is not None and reply.calendar and (query.data or '').startswith(('cal:','adm:')):
             try:
-                await query.message.edit_text(calendar_text(reply), reply_markup=calendar_markup(reply))
+                markup = calendar_markup(reply)
+                await query.message.edit_text(calendar_text(reply), reply_markup=markup)
+                conversation.store.snapshot_message(query.from_user.id, query.message.message_id, calendar_text(reply), markup)
             except TelegramAPIError:
                 # Keep the displayed calendar usable if Telegram rejects the edit.
                 conversation.store.save_conversation(query.from_user.id, previous_state)
@@ -273,7 +288,9 @@ def make_dispatcher(conversation):
             await query.answer()
         elif reply is not None and reply.replace_screen:
             try:
-                await query.message.edit_text(reply.text, reply_markup=InlineKeyboardMarkup(inline_keyboard=action_rows(reply.buttons)))
+                markup = InlineKeyboardMarkup(inline_keyboard=action_rows(reply.buttons))
+                await query.message.edit_text(reply.text, reply_markup=markup)
+                conversation.store.snapshot_message(query.from_user.id, query.message.message_id, reply.text, markup)
                 outgoing.get().append(query.message.message_id)
             except TelegramAPIError:
                 conversation.store.save_conversation(query.from_user.id, previous_state)
@@ -313,9 +330,11 @@ def make_dispatcher(conversation):
                 and previous_state.get('calendar_message_id')
                 and text in ('Previous month','Next month','Previous entries','Next entries')):
             try:
+                markup = calendar_markup(reply)
                 await message.bot.edit_message_text(chat_id=message.chat.id,
                                                     message_id=previous_state['calendar_message_id'],
-                                                    text=calendar_text(reply), reply_markup=calendar_markup(reply))
+                                                    text=calendar_text(reply), reply_markup=markup)
+                conversation.store.snapshot_message(message.from_user.id, previous_state['calendar_message_id'], calendar_text(reply), markup)
             except TelegramAPIError:
                 conversation.store.save_conversation(message.from_user.id, previous_state)
                 await send_tracked(message, 'Could not update the calendar. Try again or reopen View calendar.')

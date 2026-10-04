@@ -5,6 +5,7 @@ from .history import History, month_calendar
 from .reports import report_data, summary
 from .notification_settings import NotificationSettings
 from .admin import Admin, ADMIN_FLOWS
+from .version import VERSION, whats_new
 
 from .domain import (DEFAULT_GYMS, local_today, month_value, profile_value,
                      clock_time, quick_entry, short_text, time_range, training_date, time_suggestions, time_prompt)
@@ -38,7 +39,7 @@ COMPETITION_NAMES = {'wettkampf', 'wettkämpf'}
 TRAINING_FLOWS = {'day_choice', 'day_date', 'day_status', 'train_date', 'train_gym',
                   'train_new_gym', 'train_save_gym', 'competition_city', 'train_start', 'train_end',
                   'train_time', 'confirm', 'no_training', 'no_confirm'}
-BROWSING_FLOWS = {None, 'settings', 'gym_menu', 'history', 'history_day_action', 'help', 'reports', 'report_preview', 'notification_list', 'notification_view'} | ADMIN_FLOWS
+BROWSING_FLOWS = {None, 'settings', 'gym_menu', 'history', 'history_day_action', 'help', 'whats_new', 'reports', 'report_preview', 'notification_list', 'notification_view'} | ADMIN_FLOWS
 
 
 def in_action(state):
@@ -423,7 +424,9 @@ class Conversation:
             return self.go_back(uid, state)
         if in_action(state) and (text in ('Main menu','Back') or text.startswith('/')):
             raise ValueError('Finish this action or choose Cancel before leaving it.')
-        if text == 'Back':
+        if text == 'Back' and state.get('flow') == 'whats_new':
+            text = '/help'
+        elif text == 'Back':
             return self.go_back(uid, state)
         if not state or state.get('flow') in ('settings', 'gym_menu', 'history', 'reports', 'report_preview', 'notification_list', 'notification_view'):
             text = BUTTON_COMMANDS.get(text, text)
@@ -454,9 +457,12 @@ class Conversation:
         if not p:
             return self.start_setup(uid)
         today = local_today(p['timezone'])
+        if state.get('flow') == 'help' and text == "What's new":
+            self.store.save_conversation(uid, dict(flow='whats_new'))
+            return Reply(whats_new(), ['Back', 'Main menu'])
         if text == '/help':
             self.store.save_conversation(uid, dict(flow='help'))
-            return Reply('Log day — record training or no training\nCalendar — browse dates and manage training records\nEarnings — see amounts per training and monthly totals\nReports — receive a monthly PDF\nSettings — profile, rate, timezone and gyms\nCancel — discard the unfinished action and return to where it started\nBack — previous step while logging, or previous screen while browsing\nMain menu — go home while browsing\n\nUse the month arrows or Choose month in either section.\nQuick entry: 28.09 Herschelschule 16:00-20:00\nDates without a year use the current year. Use DD.MM.YYYY for older years.', ['Back','Main menu'])
+            return Reply(f'Training bot · Version {VERSION}\n\nLog day — record training or no training\nCalendar — browse dates and manage training records\nEarnings — see amounts per training and monthly totals\nReports — receive a monthly PDF\nSettings — profile, rate, timezone and gyms\nCancel — discard the unfinished action and return to where it started\nBack — previous step while logging, or previous screen while browsing\nMain menu — go home while browsing\n\nUse the month arrows or Choose month in either section.\nQuick entry: 28.09 Herschelschule 16:00-20:00\nDates without a year use the current year. Use DD.MM.YYYY for older years.', ["What's new",'Back','Main menu'])
         if text == '/report' or text.startswith('/report '):
             if ' ' in text:
                 return self.report_preview(uid, month_value(text.split(maxsplit=1)[1]))

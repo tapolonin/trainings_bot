@@ -23,3 +23,6 @@ gha-creds-*.json
 .agents/
 .aws/
 .codex/
+
+# Private local operations checklist
+docs/TODO.md
