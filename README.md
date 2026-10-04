@@ -114,8 +114,14 @@ on the machine running the bot.
   be turned off. Up to 30 custom notifications are supported.
 - All schedules use the timezone in Settings. Changes take effect on the next
   check (within 30 seconds). No notification generates a PDF automatically.
-- New reminders include **Delete notification**. They stay in chat, with their
-  buttons available, until you delete them. Deleting the message leaves its
+- After any notification, the current menu or unfinished input prompt is
+  posted below it as a separate, silent message. Your draft is preserved.
+- Recording training or no training for a day automatically removes its daily
+  reminder, including when you use the calendar or enter an earlier day. If it
+  shares a message with the monthly reminder, the monthly part stays. Daily
+  reminders too old to delete are replaced with a recorded confirmation.
+- New reminders include **Delete notification**. Other notifications stay in
+  chat, with their buttons available, until you delete them. Deleting the message leaves its
   recurring schedule enabled. The delete button works across navigation, drafts
   and restarts. Telegram only allows bots to delete messages less than 48 hours
   old; older messages must be deleted manually in Telegram.
@@ -236,3 +242,18 @@ checks cover June (19 entries, 2 PDF pages) and August (24 entries, 3 PDF pages)
 - `deploy/trainings-bot.service`: systemd service for automatic startup and restart.
 
 Telegram integration uses [aiogram 3](https://docs.aiogram.dev/en/latest/).
+
+## Versions and release notes
+
+**Help → What's new** shows the running bot's version and latest changes.
+[Changelog](trainings_bot/CHANGELOG.md) records every version; its first entry is
+also the single source for the version displayed in the bot. Version 0.1.0 names
+the initial public deployment; 0.2.0 is the next release.
+
+For each release, add a new changelog section in the pull request. Use patch
+versions for fixes, minor versions for compatible features, and major versions
+for incompatible changes. Keep previous sections so the history remains available.
+Merge into `main` after CI passes to deploy. The VM retains releases by commit SHA,
+so the deployed code and its version travel together. The changelog describes code
+versions, not proof of successful deployment: check the deployment job for that.
+

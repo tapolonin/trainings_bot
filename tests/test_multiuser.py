@@ -159,9 +159,9 @@ class MultiuserTelegramTests(unittest.IsolatedAsyncioTestCase):
         self.store.update_profile(2,'timezone','America/New_York')
         bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=900)))
         now = datetime(2026,9,28,18,tzinfo=timezone.utc)
-        await send_due(self.store,bot,now)
+        await send_due(self.store,bot,now, refresh_ui=False)
         self.assertEqual([c.args[0] for c in bot.send_message.call_args_list],[1])
-        await send_due(self.store,bot,datetime(2026,9,29,0,tzinfo=timezone.utc))
+        await send_due(self.store,bot,datetime(2026,9,29,0,tzinfo=timezone.utc), refresh_ui=False)
         self.assertEqual([c.args[0] for c in bot.send_message.call_args_list],[1,2])
         self.store.update_profile(2,'timezone','Europe/Berlin')
         async def blocked(uid, text, **kwargs):
@@ -170,7 +170,7 @@ class MultiuserTelegramTests(unittest.IsolatedAsyncioTestCase):
             return SimpleNamespace(message_id=901)
         bot.send_message.side_effect=blocked
         with self.assertLogs('trainings_bot.reminders',level='WARNING'):
-            await send_due(self.store,bot,datetime(2026,9,29,18,tzinfo=timezone.utc))
+            await send_due(self.store,bot,datetime(2026,9,29,18,tzinfo=timezone.utc), refresh_ui=False)
         self.assertEqual(self.store.notification(2,'evening','2026-09-29')['message_id'],901)
         self.assertIsNone(self.store.notification(1,'evening','2026-09-29')['message_id'])
 

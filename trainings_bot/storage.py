@@ -43,6 +43,11 @@ CREATE TABLE IF NOT EXISTS ui_actions (
 CREATE TABLE IF NOT EXISTS ui_messages (
  user_id INTEGER NOT NULL, chat_id INTEGER NOT NULL, message_id INTEGER NOT NULL,
  PRIMARY KEY(user_id,chat_id,message_id));
+CREATE TABLE IF NOT EXISTS ui_snapshots (
+ user_id INTEGER NOT NULL, message_id INTEGER NOT NULL, text TEXT NOT NULL, markup TEXT,
+ PRIMARY KEY(user_id,message_id));
+CREATE TABLE IF NOT EXISTS resolved_reminders (
+ user_id INTEGER NOT NULL, period TEXT NOT NULL, PRIMARY KEY(user_id,period));
 CREATE TRIGGER IF NOT EXISTS one_training_per_day_insert
 BEFORE INSERT ON trainings
 WHEN EXISTS (SELECT 1 FROM trainings WHERE user_id=NEW.user_id AND day=NEW.day)
@@ -78,6 +83,12 @@ class Store:
     def forget_message(self, uid, chat_id, message_id):
         with self.db:
             self.db.execute('DELETE FROM ui_messages WHERE user_id=? AND chat_id=? AND message_id=?', (uid,chat_id,message_id))
+            self.db.execute('DELETE FROM ui_snapshots WHERE user_id=? AND message_id=?', (uid,message_id))
+
+    def snapshot_message(self, uid, message_id, text, markup):
+        with self.db:
+            self.db.execute('INSERT OR REPLACE INTO ui_snapshots VALUES (?,?,?,?)',
+                            (uid,message_id,text,markup.model_dump_json() if markup else None))
 
     def schedules(self, uid):
         p = self.profile(uid)
